@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/indexooor/core/indexooor"
 	"github.com/urfave/cli/v2"
@@ -51,8 +52,12 @@ func main() {
 func startIndexing(ctx *cli.Context) error {
 	// (TODO): Perform checks on flag values here
 
+	fmt.Println("Starting indexing...")
+
 	// Start a new go routine to index
 	go indexooor.StartIndexing()
+
+	time.Sleep(time.Second * 5)
 
 	return nil
 }
