@@ -89,7 +89,7 @@ func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string) e
 							storage := v.(map[string]interface{})["storage"]
 							fmt.Println("Post storage for", contractsToIndex[j], storage)
 
-							// iterate over all keys in storage and store to db with slot id as key
+							// iterate over all keys in storage and store to db with slot id as key and contract address as key
 							for k, v := range storage.(map[string]interface{}) {
 								fmt.Println("Key", k, "Value", v)
 							}
