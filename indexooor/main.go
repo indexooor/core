@@ -82,36 +82,27 @@ func getBlockNumber(client *ethclient.Client) uint64 {
 	return results
 }
 
-type Account struct {
-	balance string            `json:"balance"`
-	code    string            `json:"code"`
-	nonce   uint64            `json:"nonce"`
-	storage map[string]string `json:"storage"`
-}
-type DebugTraceTransactionResult struct {
-	pre  map[string]map[string]Account `json:"pre"`
-	post map[string]map[string]Account `json:"post"`
-}
+func debugTraceTransaction(rpcClient *rpc.Client, txHash string) {
+	// map[post: map[address: Account], pre: map[address: Account]]
+	var result map[string]map[string]interface{}
 
-func debugTraceTransaction(rpcClient *rpc.Client, txHash string) DebugTraceTransactionResult {
-
-	var result DebugTraceTransactionResult
 	err := rpcClient.CallContext(context.Background(), &result, "debug_traceTransaction", txHash, map[string]interface{}{
 		"tracer": "prestateTracer",
 		"tracerConfig": map[string]interface{}{
-			"diffMode":    true,
-			"onlyTopCall": true,
+			"diffMode": true,
 		},
 	})
 	if err != nil {
 		fmt.Println("err", err)
 	}
-	fmt.Println("result", result)
 
-	fmt.Printf("pre: %+v\n", result)
-	// fmt.Printf("post: %#v\n", result.post);
-
-	return result
+	for k, v := range result {
+		if k == "post" {
+			addr := "0x3126d03e98bb95a7d4046ba8a64369e6656fe448"
+			storage := v[addr].(map[string]interface{})["storage"]
+			fmt.Println("Post storage for", addr, storage)
+		}
+	}
 }
 
 func main9() {
