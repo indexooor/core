@@ -72,7 +72,7 @@ func startIndexing(ctx *cli.Context) error {
 	fmt.Println("Start block:", ctx.Int64("start-block"))
 	fmt.Println("RPC:", ctx.String("rpc"))
 
-	startBlock := ctx.Int64("start-block")
+	startBlock := ctx.Uint64("start-block")
 	rpc := ctx.String("rpc")
 
 	// split string by comma
