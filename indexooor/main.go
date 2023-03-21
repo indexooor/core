@@ -14,6 +14,15 @@ import (
 
 // StartIndexing starts indexing a contract address
 func StartIndexing(rpc string, startBlock int64, contractAddresses []string) error {
+
+	// initialise data necessary for indexing
+
+	contractStorageHashes := make(map[string]string)
+
+	for i := 0; i < len(contractAddresses); i++ {
+		contractStorageHashes[contractAddresses[i]] = ""
+	}
+
 	// Expected inputs: contract address, rpc
 
 	// This logic might work for single contract as of now.
