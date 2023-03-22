@@ -6,7 +6,7 @@ import (
 
 	"github.com/lib/pq"
 
-	"github.com/ethereum/go-ethereum/log"
+	log "github.com/inconshreveable/log15"
 )
 
 // Postgres config
@@ -95,7 +95,7 @@ func (db *DB) prepareStatements() error {
 
 	db.runInsert = runInsertStatement
 
-	query = "INSERT INTO indexooor (slot, contract, value, variable_name, key) VALUES ($1, $2, $3, $4, %5)"
+	query = "INSERT INTO indexooor (slot, contract, value, variable_name, key) VALUES ($1, $2, $3, $4, $5)"
 	indexooorInsertStatement, err := db.db.Prepare(query)
 	if err != nil {
 		log.Error("Error in creating insert statement for indexooor table", "err", err)
@@ -165,19 +165,7 @@ func (db *DB) createIndexingTable() error {
 func (db *DB) CreateNewRun(run *Run) error {
 	log.Info("Attempting to create new run", "start block", run.StartBlock, "end block", run.EndBlock, "contracts", run.Contracts)
 
-	contracts := ""
-	for _, value := range run.Contracts {
-		contracts += "'" + value + "'"
-		contracts += ","
-	}
-
-	if contracts != "" {
-		contracts = contracts[:len(contracts)-1]
-	}
-
-	contracts = "ARRAY[" + contracts + "]"
-
-	_, err := db.runInsert.Exec(run.StartBlock, run.EndBlock, contracts)
+	_, err := db.runInsert.Exec(run.StartBlock, run.EndBlock, pq.Array(run.Contracts))
 	if err != nil {
 		log.Info("Error in creating new run", "err", err)
 		return err
