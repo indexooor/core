@@ -11,29 +11,26 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/ethclient/gethclient"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/lib/pq"
 
-	"github.com/indexooor/core/db"
+	database "github.com/indexooor/core/db"
 )
-
-type Run struct {
-	id         int            `db:"id"`
-	startBlock int            `db:"start_block"`
-	endBlock   int            `db:"end_block"`
-	contracts  pq.StringArray `db:"contracts"`
-}
-type Indexooor struct {
-	slot         pq.ByteaArray `db:"slot"`
-	contract     string        `db:"contract"`
-	value        pq.ByteaArray `db:"value"`
-	variableName string        `db:"variable_name"`
-	key          pq.ByteaArray `db:"key"`
-}
 
 // StartIndexing starts indexing a contract address
 func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string) error {
 	// Setup the DB
-	_, err := db.SetupDB()
+	db, err := database.SetupDB()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	// Create a new run in table
+	run := &database.Run{
+		StartBlock: int(startBlock),
+		EndBlock:   int(startBlock),
+		Contracts:  contractAddresses,
+	}
+	err = db.CreateNewRun(run)
 	if err != nil {
 		return err
 	}

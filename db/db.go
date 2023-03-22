@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 
 	"github.com/ethereum/go-ethereum/log"
 )
@@ -19,13 +19,32 @@ var (
 	sslmode  = "disable"
 )
 
-func SetupDB() (*sql.DB, error) {
+type DB struct {
+	db              *sql.DB
+	runInsert       *sql.Stmt
+	indexooorInsert *sql.Stmt
+}
+
+type Run struct {
+	Id         int            `db:"id"`
+	StartBlock int            `db:"start_block"`
+	EndBlock   int            `db:"end_block"`
+	Contracts  pq.StringArray `db:"contracts"`
+}
+type Indexooor struct {
+	Slot         string `db:"slot"`
+	Contract     string `db:"contract"`
+	Value        string `db:"value"`
+	VariableName string `db:"variable_name"`
+	Key          string `db:"key"`
+}
+
+func SetupDB() (*DB, error) {
 	db, err := connect()
 	if err != nil {
 		log.Error("Unable to connect to db", "err", err)
 		return nil, err
 	}
-	defer db.Close() // Use this in main loop
 
 	// Ping the DB to make sure it's connected
 	err = db.Ping()
@@ -36,23 +55,56 @@ func SetupDB() (*sql.DB, error) {
 
 	log.Info("Successfully connect to postgres DB")
 
+	obj := &DB{db: db}
+
 	// Create table for storing indexing runs
-	err = createRunsTable(db)
+	err = obj.createRunsTable()
 	if err != nil {
-		log.Error("Error in creating runs table", "err", err)
 		return nil, err
 	}
 
 	// Create table for storing indxed data
-	err = createIndexingTable(db)
+	err = obj.createIndexingTable()
 	if err != nil {
-		log.Error("Error in creating indexing table", "err", err)
 		return nil, err
 	}
 
 	log.Info("Created required table for indexing service")
 
-	return db, nil
+	err = obj.prepareStatements()
+	if err != nil {
+		return nil, err
+	}
+
+	return obj, nil
+}
+
+func (db *DB) Close() {
+	db.runInsert.Close()
+	db.indexooorInsert.Close()
+	db.db.Close()
+}
+
+func (db *DB) prepareStatements() error {
+	query := "INSERT INTO runs (start_block, last_block, contracts) VALUES ($1, $2, $3)"
+	runInsertStatement, err := db.db.Prepare(query)
+	if err != nil {
+		log.Error("Error in creating insert statement for runs table", "err", err)
+		return err
+	}
+
+	db.runInsert = runInsertStatement
+
+	query = "INSERT INTO indexooor (slot, contract, value, variable_name, key) VALUES ($1, $2, $3, $4, %5)"
+	indexooorInsertStatement, err := db.db.Prepare(query)
+	if err != nil {
+		log.Error("Error in creating insert statement for indexooor table", "err", err)
+		return err
+	}
+
+	db.indexooorInsert = indexooorInsertStatement
+
+	return nil
 }
 
 func connect() (*sql.DB, error) {
@@ -64,7 +116,7 @@ func connect() (*sql.DB, error) {
 	return sql.Open("postgres", connStr)
 }
 
-func createRunsTable(db *sql.DB) error {
+func (db *DB) createRunsTable() error {
 	log.Debug("Attempting to create runs table")
 
 	// Create the "runs" table if it does not exist
@@ -74,28 +126,90 @@ func createRunsTable(db *sql.DB) error {
 		last_block INTEGER NOT NULL,
 		contracts TEXT[]
 	);`
-	_, err := db.Exec(query)
-	if err == nil {
-		log.Debug("Runs table created successfully (if not already present)")
+
+	_, err := db.db.Exec(query)
+	if err != nil {
+		log.Error("Error in creating runs table", "err", err)
+		return err
 	}
-	return err
+
+	log.Info("Runs table created successfully (if not already present)")
+
+	return nil
 }
 
-func createIndexingTable(db *sql.DB) error {
+func (db *DB) createIndexingTable() error {
 	log.Debug("Attempting to create indexing table")
 
 	// Create the "runs" table if it does not exist
 	query := `CREATE TABLE IF NOT EXISTS indexooor (
-		slot bytea,
+		slot TEXT,
 		contract TEXT,
-		value bytea,
+		value TEXT,
 		variable_name TEXT,
-		key bytea,
+		key TEXT,
 		PRIMARY KEY (slot, contract)
 	);`
-	_, err := db.Exec(query)
-	if err == nil {
-		log.Debug("Indexing table created successfully (if not already present)")
+
+	_, err := db.db.Exec(query)
+	if err != nil {
+		log.Error("Error in creating indexing table", "err", err)
+		return err
 	}
-	return err
+
+	log.Info("Indexing table created successfully (if not already present)")
+
+	return nil
+}
+
+func (db *DB) CreateNewRun(run *Run) error {
+	log.Info("Attempting to create new run", "start block", run.StartBlock, "end block", run.EndBlock, "contracts", run.Contracts)
+
+	contracts := ""
+	for _, value := range run.Contracts {
+		contracts += "'" + value + "'"
+		contracts += ","
+	}
+
+	if contracts != "" {
+		contracts = contracts[:len(contracts)-1]
+	}
+
+	contracts = "ARRAY[" + contracts + "]"
+
+	_, err := db.runInsert.Exec(run.StartBlock, run.EndBlock, contracts)
+	if err != nil {
+		log.Info("Error in creating new run", "err", err)
+		return err
+	}
+
+	log.Info("Created new run entry")
+	return nil
+}
+
+func (db *DB) AddNewIndexingEntry(obj *Indexooor) error {
+	log.Debug("Attempting to add new indexing row")
+
+	var variableName interface{}
+	if obj.VariableName != "" {
+		variableName = obj.VariableName
+	} else {
+		variableName = nil
+	}
+
+	var key interface{}
+	if obj.Key != "" {
+		key = obj.Key
+	} else {
+		key = nil
+	}
+
+	_, err := db.indexooorInsert.Exec(obj.Slot, obj.Contract, obj.Value, variableName, key)
+	if err != nil {
+		log.Info("Error in creating new run", "err", err)
+		return err
+	}
+
+	log.Info("Created new run entry")
+	return nil
 }
