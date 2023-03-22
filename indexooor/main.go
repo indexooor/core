@@ -11,26 +11,34 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/ethclient/gethclient"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/lib/pq"
+
+	"github.com/indexooor/core/db"
 )
+
+type Run struct {
+	id         int            `db:"id"`
+	startBlock int            `db:"start_block"`
+	endBlock   int            `db:"end_block"`
+	contracts  pq.StringArray `db:"contracts"`
+}
+type Indexooor struct {
+	slot         pq.ByteaArray `db:"slot"`
+	contract     string        `db:"contract"`
+	value        pq.ByteaArray `db:"value"`
+	variableName string        `db:"variable_name"`
+	key          pq.ByteaArray `db:"key"`
+}
 
 // StartIndexing starts indexing a contract address
 func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string) error {
-
-	// Expected inputs: contract address, rpc
-
-	// This logic might work for single contract as of now.
-	// Build a generic logic which should work for multiple contracts in single iteration
-
-	// TODOs
-	/*
-	 * 1. Find contract creation block (or maybe ask for it from user?)
-	 * 2. Start querying every block and call eth_getStorageRoot for that contract
-	 * 3. If contract root is changed, fetch txs, iterate on them and get debug_traceTransaction state diff
-	 * 4. Interact with DB to push values if required
-	 */
+	// Setup the DB
+	_, err := db.SetupDB()
+	if err != nil {
+		return err
+	}
 
 	// initialise data necessary for indexing
-
 	contractStorageHashes := make(map[string]string)
 
 	currentBlock := startBlock
@@ -235,17 +243,3 @@ func debugTraceTransaction(rpcClient *rpc.Client, txHash string) map[string]map[
 	// 	}
 	// }
 }
-
-// func main9() {
-// 	fmt.Println("Hello, playground")
-// 	rpc, _ := rpc.Dial("https://eth-goerli-rpc.gateway.pokt.network/")
-// 	gethclient := gethclient.New(rpc)
-// 	client := ethclient.NewClient(rpc)
-
-// 	getProof(gethclient, "0x17fCb0e5562c9f7dBe2799B254e0948568973B36", nil)
-// 	getBlockByNumber(client, nil)
-// 	getBlockNumber(client)
-
-// 	debugTraceTransaction(rpc, "0xfd70fc72a37a912426957581f8923c0f7f24d938c8bcbeed45f82d083f8ad745")
-
-// }
