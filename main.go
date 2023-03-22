@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
-	"time"
+	"strings"
 
 	"github.com/indexooor/core/indexooor"
 	"github.com/urfave/cli/v2"
@@ -15,8 +15,19 @@ var (
 		Usage:  "Index a contract",
 		Action: startIndexing,
 		Flags: []cli.Flag{
-			&cli.StringFlag{Name: "address", Usage: "Contract address"},
-			&cli.Int64Flag{Name: "start-block", Usage: "Block to start indexing from"},
+			&cli.StringFlag{
+				Name:        "contract-addresses",
+				Usage:       "Contract address (comma seperated for multiple contracts)",
+				Value:       "",
+				DefaultText: "0x17fCb0e5562c9f7dBe2799B254e0948568973B36,0x17fCb0e5562c9f7dBe2799B254e0948568973B34",
+				Required:    true,
+			},
+			&cli.Int64Flag{
+				Name:        "start-block",
+				Usage:       "Block to start indexing from",
+				Value:       0,
+				DefaultText: "0",
+			},
 			// TODO: add more flags as needed
 		},
 	}
@@ -24,8 +35,10 @@ var (
 	// TODO: add more commands as needed
 
 	rpcFlag = &cli.StringFlag{
-		Name:  "rpc",
-		Usage: "RPC endpoint of the node",
+		Name:        "rpc",
+		Usage:       "RPC endpoint of the node",
+		Value:       "https://eth-goerli-rpc.gateway.pokt.network/",
+		DefaultText: "https://eth-goerli-rpc.gateway.pokt.network/",
 	}
 
 	// (TODO): Add more flags as needed
@@ -52,12 +65,27 @@ func main() {
 func startIndexing(ctx *cli.Context) error {
 	// (TODO): Perform checks on flag values here
 
+	fmt.Println("Indexing For")
+
+	// Print all flags
+	fmt.Println("Contract addresses:", ctx.String("contract-addresses"))
+	fmt.Println("Start block:", ctx.Int64("start-block"))
+	fmt.Println("RPC:", ctx.String("rpc"))
+
+	startBlock := ctx.Uint64("start-block")
+	rpc := ctx.String("rpc")
+
+	// split string by comma
+	contractAddresses := strings.Split(ctx.String("contract-addresses"), ",")
+	// split all strings of spaces
+	for i, contractAddress := range contractAddresses {
+		contractAddresses[i] = strings.TrimSpace(contractAddress)
+	}
+
 	fmt.Println("Starting indexing...")
 
 	// Start a new go routine to index
-	go indexooor.StartIndexing()
-
-	time.Sleep(time.Second * 5)
+	indexooor.StartIndexing(rpc, startBlock, contractAddresses)
 
 	return nil
 }
