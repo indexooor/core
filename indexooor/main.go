@@ -63,7 +63,7 @@ func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string) e
 			// iterate over all contracts and call getProof and get storage hash
 			for i := 0; i < len(contractAddresses); i++ {
 				// get storage hash
-				storageHash := getProof(gethclient, contractAddresses[i], nil).StorageHash.Hex()
+				storageHash := getProof(gethclient, contractAddresses[i], big.NewInt(int64(currentBlock))).StorageHash.Hex()
 
 				// if not equal to previous storage hash, index data
 				if storageHash != contractStorageHashes[contractAddresses[i]] {
@@ -75,7 +75,7 @@ func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string) e
 			// if indexBlock is true, index data
 			if indexBlock {
 				// get block by number
-				block := getBlockByNumber(client, nil)
+				block := getBlockByNumber(client, big.NewInt(int64(currentBlock)))
 
 				// iterate over all transactions in the block
 				for i := 0; i < block.Transactions().Len(); i++ {
@@ -97,6 +97,12 @@ func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string) e
 							// iterate over all keys in storage and store to db with slot id as key and contract address as key
 							for k, v := range storage.(map[string]interface{}) {
 								fmt.Println("Key", k, "Value", v)
+								obj := &database.Indexooor{
+									Slot:     k,
+									Value:    v.(string),
+									Contract: contractsToIndex[j],
+								}
+								db.AddNewIndexingEntry(obj)
 							}
 
 						}
