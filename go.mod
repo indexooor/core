@@ -2,7 +2,11 @@ module github.com/indexooor/core
 
 go 1.19
 
-require github.com/urfave/cli/v2 v2.25.0
+require (
+	github.com/ethereum/go-ethereum v1.11.4
+	github.com/lib/pq v1.10.7
+	github.com/urfave/cli/v2 v2.25.0
+)
 
 require (
 	github.com/StackExchange/wmi v0.0.0-20180116203802-5d049714c4a6 // indirect
@@ -10,7 +14,6 @@ require (
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
 	github.com/deckarep/golang-set/v2 v2.1.0 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1 // indirect
-	github.com/ethereum/go-ethereum v1.11.4 // indirect
 	github.com/go-ole/go-ole v1.2.1 // indirect
 	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
