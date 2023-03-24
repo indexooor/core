@@ -2,6 +2,7 @@ package indexooor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -10,13 +11,17 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/ethclient/gethclient"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
 
 	database "github.com/indexooor/core/db"
 )
 
-// StartIndexing starts indexing a contract address
-func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string) error {
+var errInvalidStartBlock error = errors.New("invalid start block")
+
+// StartIndexing is the main loop which starts indexing the given contract addresses
+// from a start block using an RPC endpoint.
+func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string, runId uint64) error {
 	// Setup the DB
 	db, err := database.SetupDB()
 	if err != nil {
@@ -24,49 +29,86 @@ func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string) e
 	}
 	defer db.Close()
 
-	// Create a new run in table
-	run := &database.Run{
-		StartBlock: int(startBlock),
-		EndBlock:   int(startBlock),
-		Contracts:  contractAddresses,
+	var run *database.Run
+
+	if runId != 0 {
+		// Look out for an existing run by ID
+		log.Info("Looking for an existing run entry for indexing data", "id", runId)
+		run, err = db.FetchRunByID(runId)
 	}
-	err = db.CreateNewRun(run)
-	if err != nil {
-		return err
+
+	if run == nil || err != nil {
+		log.Info("Creating a new run entry for indexing data")
+		// Create a new run in table
+		run = &database.Run{
+			StartBlock: startBlock,
+			LastBlock:  startBlock,
+			Contracts:  contractAddresses,
+		}
+		err = db.CreateNewRun(run)
+		if err != nil {
+			return err
+		}
 	}
+
+	// Use contracts from runs table
+	contractAddresses = run.Contracts
 
 	// initialise data necessary for indexing
-	contractStorageHashes := make(map[string]string)
-
-	currentBlock := startBlock
+	var (
+		currentBlock          uint64 = startBlock
+		latestBlockNumber     uint64
+		contractStorageHashes = make(map[string]common.Hash)
+	)
 
 	for i := 0; i < len(contractAddresses); i++ {
-		contractStorageHashes[contractAddresses[i]] = ""
+		contractStorageHashes[contractAddresses[i]] = common.Hash{}
 	}
 
 	rpc, _ := rpc.Dial(_rpc)
 	gethclient := gethclient.New(rpc)
 	client := ethclient.NewClient(rpc)
 
+	latestBlockNumber, err = getBlockNumber(client)
+	if err != nil {
+		return err
+	}
+
+	// Return if start block is ahead of latest chain head
+	if currentBlock > latestBlockNumber {
+		log.Error("Latest chain head is behind provided start block, stopping", "chain head", latestBlockNumber, "start block", currentBlock)
+		return errInvalidStartBlock
+	}
+
 	// forever loop
 	for {
-		// get current block number
-		latestBlockNumber := getBlockNumber(client)
+		// Update the upper limit if required
+		if currentBlock > latestBlockNumber {
+			// get current block number
+			latestBlockNumber, err = getBlockNumber(client)
+			if err != nil {
+				return err
+			}
+		}
 
 		indexBlock := false
 
 		// make a list of contracts to index
-		contractsToIndex := []string{}
+		contractsToIndex := make([]string, 0, len(contractAddresses))
 
-		// if current block number is not equal to latest block, index data
-		if currentBlock != latestBlockNumber {
+		// If we're behind latest block, index data
+		if currentBlock <= latestBlockNumber {
 			// iterate over all contracts and call getProof and get storage hash
+			log.Info("Checking for storage root change in contracts", "block", currentBlock)
 			for i := 0; i < len(contractAddresses); i++ {
-				// get storage hash
-				storageHash := getProof(gethclient, contractAddresses[i], big.NewInt(int64(currentBlock))).StorageHash.Hex()
+				// get storage root
+				storageRoot, err := getStorageRoot(gethclient, contractAddresses[i], big.NewInt(int64(currentBlock)))
+				if err != nil {
+					return err
+				}
 
 				// if not equal to previous storage hash, index data
-				if storageHash != contractStorageHashes[contractAddresses[i]] {
+				if storageRoot != contractStorageHashes[contractAddresses[i]] {
 					indexBlock = true
 					contractsToIndex = append(contractsToIndex, contractAddresses[i])
 				}
@@ -74,56 +116,73 @@ func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string) e
 
 			// if indexBlock is true, index data
 			if indexBlock {
+				log.Info("State diff found against block, fetching traces for each block tx", "block", currentBlock)
+
 				// get block by number
-				block := getBlockByNumber(client, big.NewInt(int64(currentBlock)))
+				block, err := getBlockByNumber(client, big.NewInt(int64(currentBlock)))
+				if err != nil {
+					return err
+				}
+
+				txs := block.Transactions()
 
 				// iterate over all transactions in the block
-				for i := 0; i < block.Transactions().Len(); i++ {
+				for i := 0; i < txs.Len(); i++ {
 					// get transaction hash
-					txHash := block.Transactions()[i].Hash().Hex()
+					txHash := txs[i].Hash().Hex()
 
 					// call debug_traceTransaction
-
-					txnTrace := debugTraceTransaction(rpc, txHash)
+					txnTrace, err := debugTraceTransaction(rpc, txHash)
+					if err != nil {
+						return err
+					}
 
 					// iterate over contracts and check trace, if trace has post for contract address, store to db
 					for j := 0; j < len(contractsToIndex); j++ {
-						if txnTrace["post"][contractsToIndex[j]] != nil {
-							// store to db
-							v := txnTrace["post"][contractsToIndex[j]]
-							storage := v.(map[string]interface{})["storage"]
-							fmt.Println("Post storage for", contractsToIndex[j], storage)
+						contractTrace := txnTrace["post"][contractsToIndex[j]]
+						if contractTrace == nil {
+							continue
+						}
 
-							// iterate over all keys in storage and store to db with slot id as key and contract address as key
-							for k, v := range storage.(map[string]interface{}) {
-								fmt.Println("Key", k, "Value", v)
-								obj := &database.Indexooor{
-									Slot:     k,
-									Value:    v.(string),
-									Contract: contractsToIndex[j],
-								}
-								db.AddNewIndexingEntry(obj)
+						// access the storage field of the contract
+						storage := contractTrace.(map[string]interface{})["storage"]
+
+						if storage == nil {
+							continue
+						}
+
+						// iterate over all keys in storage and store to db with (slot + contract address) -> value
+						for slot, value := range storage.(map[string]interface{}) {
+							obj := &database.Indexooor{
+								Slot:     slot,
+								Value:    value.(string),
+								Contract: contractsToIndex[j],
 							}
-
+							log.Info("Inserting data into DB", "contract", obj.Contract, "slot", obj.Slot, "value", obj.Value)
+							db.AddNewIndexingEntry(obj)
+							log.Info("Done adding data")
 						}
 					}
 				}
-
+			} else {
+				log.Info("Nothing to index", "block", currentBlock)
 			}
 
+			// Update the last block indexed in the run (can be done async)
+			// and ignore err for now
+			go db.UpdateRun(run.Id, currentBlock)
+
+			currentBlock++
 		} else {
-
-			// sleep for 8 seconds
-			time.Sleep(time.Second * 8)
-
+			log.Info("Indexed till tip of chain, waiting for 10s", "block", currentBlock)
+			time.Sleep(10 * time.Second)
 		}
-
 	}
 }
 
-// indexing function where all contracts are indexed in full mode
+// StartIndexingFullMode indexes all the existing contracts on a network from a start block.
+// TODO: Refactor according to startIndexing else won't work as of now.
 func StartIndexingFullMode(_rpc string, startBlock uint64) {
-
 	currentBlock := startBlock
 
 	rpc, _ := rpc.Dial(_rpc)
@@ -133,12 +192,12 @@ func StartIndexingFullMode(_rpc string, startBlock uint64) {
 	// forever loop
 	for {
 		// get current block number
-		latestBlockNumber := getBlockNumber(client)
+		latestBlockNumber, _ := getBlockNumber(client)
 		// if current block number is not equal to latest block, index data
 		if currentBlock != latestBlockNumber {
 
 			// get block by number
-			block := getBlockByNumber(client, nil)
+			block, _ := getBlockByNumber(client, nil)
 
 			// iterate over all transactions in the block
 			for i := 0; i < block.Transactions().Len(); i++ {
@@ -147,7 +206,7 @@ func StartIndexingFullMode(_rpc string, startBlock uint64) {
 
 				// call debug_traceTransaction
 
-				txnTrace := debugTraceTransaction(rpc, txHash)
+				txnTrace, _ := debugTraceTransaction(rpc, txHash)
 
 				// iterate over all keys in trace and check trace, if trace has post for contract address, store to db
 				for k := range txnTrace["post"] {
@@ -175,56 +234,46 @@ func StartIndexingFullMode(_rpc string, startBlock uint64) {
 		}
 
 	}
-
 }
 
-// AccountResult is the result of a GetProof operation.
-func getProof(client *gethclient.Client, contractAddress string, blockNumber *big.Int) *gethclient.AccountResult {
-
-	result, err := client.GetProof(context.Background(), common.HexToAddress(contractAddress), []string{}, blockNumber)
-
-	// finalizedBlock, err := client.BlockByNumber(context.Background(), new(big.Int).SetInt64(29652208)) // 0x190B6C0
-
+// getStorageRoot calls the eth_getProof endpoint against a contract address and block number
+// and returns the storage trie root for the contract.
+func getStorageRoot(client *gethclient.Client, address string, number *big.Int) (common.Hash, error) {
+	proof, err := client.GetProof(context.Background(), common.HexToAddress(address), []string{}, number)
 	if err != nil {
-		fmt.Println("err", err)
-	}
-	fmt.Println("Storage Hash", result.StorageHash)
-	fmt.Println("Account Address", result.Address)
-
-	return result
-}
-
-func getBlockByNumber(client *ethclient.Client, blockNumber *big.Int) *types.Block {
-
-	results, err := client.BlockByNumber(context.Background(), blockNumber)
-
-	if err != nil {
-		fmt.Println("err", err)
+		log.Info("Error fetching proof of contract address", "address", address, "number", number, "err", err)
+		return common.Hash{}, err
 	}
 
-	// fmt.Println("Len Of Transactions", results.Transactions().Len())
-
-	// for i := 0; i < results.Transactions().Len(); i++ {
-	// 	fmt.Println("Transaction", results.Transactions()[i].Hash().Hex())
-	// }
-
-	return results
-
+	return proof.StorageHash, nil
 }
 
-func getBlockNumber(client *ethclient.Client) uint64 {
-	results, err := client.BlockNumber(context.Background())
+// getBlockByNumber returns block by number
+func getBlockByNumber(client *ethclient.Client, number *big.Int) (*types.Block, error) {
+	block, err := client.BlockByNumber(context.Background(), number)
 	if err != nil {
-		fmt.Println("err", err)
+		log.Error("Error fetching block by number", "number", number, "err", err)
 	}
-	fmt.Println("results", results)
 
-	return results
+	return block, nil
 }
 
-func debugTraceTransaction(rpcClient *rpc.Client, txHash string) map[string]map[string]interface{} {
+// getBlockNumber returns latest block number
+func getBlockNumber(client *ethclient.Client) (uint64, error) {
+	number, err := client.BlockNumber(context.Background())
+	if err != nil {
+		log.Error("Error fetching chain block number", "err", err)
+		return 0, err
+	}
+
+	return number, err
+}
+
+// debugTraceTransaction calls debug_traceTransaction for the given transaction hash and uses "preStateTracer" to fetch
+// state diff.
+func debugTraceTransaction(rpcClient *rpc.Client, txHash string) (map[string]map[string]interface{}, error) {
 	// map[post: map[address: Account], pre: map[address: Account]]
-	var result map[string]map[string]interface{}
+	var result map[string]map[string]interface{} // TODO: Convert this into a struct based object
 
 	err := rpcClient.CallContext(context.Background(), &result, "debug_traceTransaction", txHash, map[string]interface{}{
 		"tracer": "prestateTracer",
@@ -232,11 +281,10 @@ func debugTraceTransaction(rpcClient *rpc.Client, txHash string) map[string]map[
 			"diffMode": true,
 		},
 	})
-	if err != nil {
-		fmt.Println("err", err)
-	}
 
-	return result
+	if err != nil {
+		log.Error("Error in running debug trace transaction", "hash", txHash, "err", err)
+	}
 
 	// for k, v := range result {
 	// 	if k == "post" {
@@ -245,4 +293,6 @@ func debugTraceTransaction(rpcClient *rpc.Client, txHash string) map[string]map[
 	// 		fmt.Println("Post storage for", addr, storage)
 	// 	}
 	// }
+
+	return result, err
 }

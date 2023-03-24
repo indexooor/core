@@ -22,13 +22,14 @@ var (
 type DB struct {
 	db              *sql.DB
 	runInsert       *sql.Stmt
+	runUpdate       *sql.Stmt
 	indexooorInsert *sql.Stmt
 }
 
 type Run struct {
-	Id         int            `db:"id"`
-	StartBlock int            `db:"start_block"`
-	EndBlock   int            `db:"end_block"`
+	Id         uint64         `db:"id"`
+	StartBlock uint64         `db:"start_block"`
+	LastBlock  uint64         `db:"end_block"`
 	Contracts  pq.StringArray `db:"contracts"`
 }
 type Indexooor struct {
@@ -81,6 +82,7 @@ func SetupDB() (*DB, error) {
 
 func (db *DB) Close() {
 	db.runInsert.Close()
+	db.runUpdate.Close()
 	db.indexooorInsert.Close()
 	db.db.Close()
 }
@@ -94,6 +96,15 @@ func (db *DB) prepareStatements() error {
 	}
 
 	db.runInsert = runInsertStatement
+
+	query = "UPDATE runs SET last_block=$1 WHERE id=$2"
+	runUpdateStatement, err := db.db.Prepare(query)
+	if err != nil {
+		log.Error("Error in creating update statement for runs table", "err", err)
+		return err
+	}
+
+	db.runUpdate = runUpdateStatement
 
 	query = "INSERT INTO indexooor (slot, contract, value, variable_name, key) VALUES ($1, $2, $3, $4, $5)"
 	indexooorInsertStatement, err := db.db.Prepare(query)
@@ -163,9 +174,9 @@ func (db *DB) createIndexingTable() error {
 }
 
 func (db *DB) CreateNewRun(run *Run) error {
-	log.Info("Attempting to create new run", "start block", run.StartBlock, "end block", run.EndBlock, "contracts", run.Contracts)
+	log.Info("Attempting to create new run", "start block", run.StartBlock, "last block", run.LastBlock, "contracts", run.Contracts)
 
-	_, err := db.runInsert.Exec(run.StartBlock, run.EndBlock, pq.Array(run.Contracts))
+	_, err := db.runInsert.Exec(run.StartBlock, run.LastBlock, pq.Array(run.Contracts))
 	if err != nil {
 		log.Info("Error in creating new run", "err", err)
 		return err
@@ -173,6 +184,48 @@ func (db *DB) CreateNewRun(run *Run) error {
 
 	log.Info("Created new run entry")
 	return nil
+}
+
+// UpdateRun updates an existing run instance given ID and last block (indexed) number
+func (db *DB) UpdateRun(id uint64, lastBlock uint64) error {
+	log.Debug("Attempting to update new run", "id", id, "last indexed block", lastBlock)
+
+	res, err := db.runUpdate.Exec(lastBlock, id)
+	if err != nil {
+		log.Error("Error in updating existing run", "id", id, "err", err)
+		return err
+	}
+
+	// Check if the query updated any rows
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		log.Error("Error in fetching rows affected", "id", id, "err", err)
+		return err
+	}
+
+	if rowsAffected == 0 {
+		log.Error("Run ID not found", "id", id)
+		return fmt.Errorf("Run with ID: %d not found", id)
+	}
+
+	log.Debug("Updated existing run entry", "id", id)
+
+	return nil
+}
+
+// FetchRunByID fetches an existing run from runs table by ID
+func (db *DB) FetchRunByID(id uint64) (*Run, error) {
+	var run Run
+	err := db.db.QueryRow("SELECT id, start_block, last_block, contracts FROM runs WHERE id = $1", id).Scan(&run.Id, &run.StartBlock, &run.LastBlock, &run.Contracts)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Debug("No run with given ID found in runs table", "id", id)
+		} else {
+			log.Error("Unable to fetch run with given ID from runs table", "id", id, "err", err)
+		}
+	}
+
+	return &run, err
 }
 
 func (db *DB) AddNewIndexingEntry(obj *Indexooor) error {
