@@ -1,10 +1,10 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/indexooor/core/indexooor"
 	"github.com/urfave/cli/v2"
 )
@@ -28,26 +28,28 @@ var (
 				Value:       0,
 				DefaultText: "0",
 			},
-			// TODO: add more flags as needed
+			&cli.Int64Flag{
+				Name:        "run-id",
+				Usage:       "Run ID to start indexing from block where left off",
+				Value:       0,
+				DefaultText: "0",
+			},
 		},
 	}
 
-	// TODO: add more commands as needed
-
+	// Generic flag
 	rpcFlag = &cli.StringFlag{
 		Name:        "rpc",
 		Usage:       "RPC endpoint of the node",
 		Value:       "https://eth-goerli-rpc.gateway.pokt.network/",
 		DefaultText: "https://eth-goerli-rpc.gateway.pokt.network/",
 	}
-
-	// (TODO): Add more flags as needed
 )
 
 func main() {
 	// Visit https://cli.urfave.org/v2/examples/flags/ for references
 	app := cli.NewApp()
-	app.Name = "OP Indexooor"
+	app.Name = "Indexooor"
 	app.Usage = "A command-line utility to interact with the indexer service"
 	app.Commands = []*cli.Command{
 		indexCommand,
@@ -57,35 +59,25 @@ func main() {
 	}
 
 	if err := app.Run(os.Args); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		log.Error("Error in indexer service, exiting", "err", err)
 		os.Exit(1)
 	}
 }
 
 func startIndexing(ctx *cli.Context) error {
-	// (TODO): Perform checks on flag values here
-
-	fmt.Println("Indexing For")
-
-	// Print all flags
-	fmt.Println("Contract addresses:", ctx.String("contract-addresses"))
-	fmt.Println("Start block:", ctx.Int64("start-block"))
-	fmt.Println("RPC:", ctx.String("rpc"))
-
 	startBlock := ctx.Uint64("start-block")
 	rpc := ctx.String("rpc")
+	runId := ctx.Uint64("run-id")
 
 	// split string by comma
 	contractAddresses := strings.Split(ctx.String("contract-addresses"), ",")
-	// split all strings of spaces
 	for i, contractAddress := range contractAddresses {
 		contractAddresses[i] = strings.TrimSpace(contractAddress)
 	}
 
-	fmt.Println("Starting indexing...")
+	log.Info("Indexoooor goes vrooom vrooom 🚀🚀")
 
-	// Start a new go routine to index
-	indexooor.StartIndexing(rpc, startBlock, contractAddresses)
+	log.Info("Starting to index", "contracts", contractAddresses, "start block", startBlock, "rpc", rpc, "run-id", runId)
 
-	return nil
+	return indexooor.StartIndexing(rpc, startBlock, contractAddresses, runId)
 }

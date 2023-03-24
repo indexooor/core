@@ -21,7 +21,7 @@ var errInvalidStartBlock error = errors.New("invalid start block")
 
 // StartIndexing is the main loop which starts indexing the given contract addresses
 // from a start block using an RPC endpoint.
-func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string) error {
+func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string, runId uint64) error {
 	// Setup the DB
 	db, err := database.SetupDB()
 	if err != nil {
@@ -29,21 +29,32 @@ func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string) e
 	}
 	defer db.Close()
 
-	// TODO: If a run ID is provided, use it else create a new one.
+	var run *database.Run
 
-	// Create a new run in table
-	run := &database.Run{
-		StartBlock: int(startBlock),
-		EndBlock:   int(startBlock),
-		Contracts:  contractAddresses,
+	if runId != 0 {
+		// Look out for an existing run by ID
+		log.Info("Looking for an existing run entry for indexing data", "id", runId)
+		run, err = db.FetchRunByID(runId)
 	}
-	err = db.CreateNewRun(run)
-	if err != nil {
-		return err
+
+	if run == nil || err != nil {
+		log.Info("Creating a new run entry for indexing data")
+		// Create a new run in table
+		run = &database.Run{
+			StartBlock: startBlock,
+			LastBlock:  startBlock,
+			Contracts:  contractAddresses,
+		}
+		err = db.CreateNewRun(run)
+		if err != nil {
+			return err
+		}
 	}
+
+	// Use contracts from runs table
+	contractAddresses = run.Contracts
 
 	// initialise data necessary for indexing
-
 	var (
 		currentBlock          uint64 = startBlock
 		latestBlockNumber     uint64
@@ -156,12 +167,16 @@ func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string) e
 			} else {
 				log.Info("Nothing to index", "block", currentBlock)
 			}
+
+			// Update the last block indexed in the run (can be done async)
+			// and ignore err for now
+			go db.UpdateRun(run.Id, currentBlock)
+
+			currentBlock++
 		} else {
-			log.Info("Indexed till tip of chain, waiting for 10s")
+			log.Info("Indexed till tip of chain, waiting for 10s", "block", currentBlock)
 			time.Sleep(10 * time.Second)
 		}
-
-		currentBlock++
 	}
 }
 
