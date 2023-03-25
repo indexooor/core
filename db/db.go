@@ -88,7 +88,7 @@ func (db *DB) Close() {
 }
 
 func (db *DB) prepareStatements() error {
-	query := "INSERT INTO runs (start_block, last_block, contracts) VALUES ($1, $2, $3)"
+	query := `INSERT INTO runs (start_block, last_block, contracts) VALUES ($1, $2, $3)`
 	runInsertStatement, err := db.db.Prepare(query)
 	if err != nil {
 		log.Error("Error in creating insert statement for runs table", "err", err)
@@ -97,7 +97,7 @@ func (db *DB) prepareStatements() error {
 
 	db.runInsert = runInsertStatement
 
-	query = "UPDATE runs SET last_block=$1 WHERE id=$2"
+	query = `UPDATE runs SET last_block=$1 WHERE id=$2`
 	runUpdateStatement, err := db.db.Prepare(query)
 	if err != nil {
 		log.Error("Error in creating update statement for runs table", "err", err)
@@ -106,7 +106,10 @@ func (db *DB) prepareStatements() error {
 
 	db.runUpdate = runUpdateStatement
 
-	query = "INSERT INTO indexooor (slot, contract, value, variable_name, key) VALUES ($1, $2, $3, $4, $5)"
+	query = `INSERT INTO indexooor (slot, contract, value, variable_name, key) 
+					 VALUES ($1, $2, $3, $4, $5)
+					 ON CONFLICT (slot, contract) DO UPDATE
+					 SET value = $3, variable_name = $4, key = $5;`
 	indexooorInsertStatement, err := db.db.Prepare(query)
 	if err != nil {
 		log.Error("Error in creating insert statement for indexooor table", "err", err)
