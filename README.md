@@ -23,6 +23,7 @@ USAGE:
    Indexooor index [command options] [arguments...]
 
 OPTIONS:
+   --rpc value                 RPC endpoint of the node (default: http://localhost:8545)
    --contract-addresses value  Contract address (comma seperated for multiple contracts) (default: "")
    --start-block value         Block to start indexing from (default: 0)
    --run-id value              Run ID to start indexing from block where left off (default: 0)
