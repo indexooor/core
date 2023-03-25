@@ -4,9 +4,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/indexooor/core/indexooor"
 	"github.com/urfave/cli/v2"
+
+	log "github.com/inconshreveable/log15"
 )
 
 var (
@@ -33,6 +34,12 @@ var (
 				Usage:       "Run ID to start indexing from block where left off",
 				Value:       0,
 				DefaultText: "0",
+			},
+			&cli.BoolFlag{
+				Name:        "debug",
+				Usage:       "Enable debug logs",
+				Value:       false,
+				DefaultText: "false",
 			},
 		},
 	}
@@ -68,6 +75,10 @@ func startIndexing(ctx *cli.Context) error {
 	startBlock := ctx.Uint64("start-block")
 	rpc := ctx.String("rpc")
 	runId := ctx.Uint64("run-id")
+
+	if ctx.Bool("debug") {
+		log.Root().SetHandler(log.LvlFilterHandler(4, log.StreamHandler(os.Stderr, log.TerminalFormat())))
+	}
 
 	// split string by comma
 	contractAddresses := strings.Split(ctx.String("contract-addresses"), ",")

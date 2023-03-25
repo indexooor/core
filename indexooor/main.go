@@ -11,8 +11,9 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/ethclient/gethclient"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
+
+	log "github.com/inconshreveable/log15"
 
 	database "github.com/indexooor/core/db"
 )
