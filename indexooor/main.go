@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -52,6 +53,9 @@ func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string, r
 		}
 	}
 
+	// TODO: Fetch latest run ID
+	log.Info("Using run", "id", run.Id)
+
 	// Use contracts from runs table
 	contractAddresses = run.Contracts
 
@@ -63,7 +67,8 @@ func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string, r
 	)
 
 	for i := 0; i < len(contractAddresses); i++ {
-		contractStorageHashes[contractAddresses[i]] = common.Hash{}
+		// Initialise with empty storage root
+		contractStorageHashes[contractAddresses[i]] = common.HexToHash("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
 	}
 
 	rpc, _ := rpc.Dial(_rpc)
@@ -108,10 +113,13 @@ func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string, r
 					return err
 				}
 
+				log.Debug("Fetched storage root", "number", currentBlock, "root", storageRoot, "existing", contractStorageHashes[contractAddresses[i]])
+
 				// if not equal to previous storage hash, index data
 				if storageRoot != contractStorageHashes[contractAddresses[i]] {
 					indexBlock = true
 					contractsToIndex = append(contractsToIndex, contractAddresses[i])
+					contractStorageHashes[contractAddresses[i]] = storageRoot // Update storage root
 				}
 			}
 
@@ -140,7 +148,7 @@ func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string, r
 
 					// iterate over contracts and check trace, if trace has post for contract address, store to db
 					for j := 0; j < len(contractsToIndex); j++ {
-						contractTrace := txnTrace["post"][contractsToIndex[j]]
+						contractTrace := txnTrace["post"][strings.ToLower(contractsToIndex[j])]
 						if contractTrace == nil {
 							continue
 						}
@@ -159,9 +167,9 @@ func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string, r
 								Value:    value.(string),
 								Contract: contractsToIndex[j],
 							}
-							log.Info("Inserting data into DB", "contract", obj.Contract, "slot", obj.Slot, "value", obj.Value)
+							log.Debug("Inserting data into DB", "contract", obj.Contract, "slot", obj.Slot, "value", obj.Value)
 							db.AddNewIndexingEntry(obj)
-							log.Info("Done adding data")
+							log.Debug("Done adding data")
 						}
 					}
 				}
@@ -171,7 +179,7 @@ func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string, r
 
 			// Update the last block indexed in the run (can be done async)
 			// and ignore err for now
-			go db.UpdateRun(run.Id, currentBlock)
+			db.UpdateRun(run.Id, currentBlock)
 
 			currentBlock++
 		} else {

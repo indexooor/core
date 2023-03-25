@@ -17,6 +17,13 @@ var (
 		Action: startIndexing,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
+				Name:        "rpc",
+				Usage:       "RPC endpoint of the node",
+				Value:       "http://localhost:8545",
+				DefaultText: "http://localhost:8545",
+				Required:    true,
+			},
+			&cli.StringFlag{
 				Name:        "contract-addresses",
 				Usage:       "Contract address (comma seperated for multiple contracts)",
 				Value:       "",
@@ -43,14 +50,6 @@ var (
 			},
 		},
 	}
-
-	// Generic flag
-	rpcFlag = &cli.StringFlag{
-		Name:        "rpc",
-		Usage:       "RPC endpoint of the node",
-		Value:       "https://eth-goerli-rpc.gateway.pokt.network/",
-		DefaultText: "https://eth-goerli-rpc.gateway.pokt.network/",
-	}
 )
 
 func main() {
@@ -60,9 +59,6 @@ func main() {
 	app.Usage = "A command-line utility to interact with the indexer service"
 	app.Commands = []*cli.Command{
 		indexCommand,
-	}
-	app.Flags = []cli.Flag{
-		rpcFlag,
 	}
 
 	if err := app.Run(os.Args); err != nil {

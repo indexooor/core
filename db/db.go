@@ -88,7 +88,7 @@ func (db *DB) Close() {
 }
 
 func (db *DB) prepareStatements() error {
-	query := `INSERT INTO runs (start_block, last_block, contracts) VALUES ($1, $2, $3)`
+	query := `INSERT INTO runs (start_block, last_block, contracts) VALUES ($1, $2, $3) RETURNING id`
 	runInsertStatement, err := db.db.Prepare(query)
 	if err != nil {
 		log.Error("Error in creating insert statement for runs table", "err", err)
@@ -179,13 +179,14 @@ func (db *DB) createIndexingTable() error {
 func (db *DB) CreateNewRun(run *Run) error {
 	log.Info("Attempting to create new run", "start block", run.StartBlock, "last block", run.LastBlock, "contracts", run.Contracts)
 
-	_, err := db.runInsert.Exec(run.StartBlock, run.LastBlock, pq.Array(run.Contracts))
+	err := db.runInsert.QueryRow(run.StartBlock, run.LastBlock, pq.Array(run.Contracts)).Scan(&run.Id)
 	if err != nil {
 		log.Info("Error in creating new run", "err", err)
 		return err
 	}
 
-	log.Info("Created new run entry")
+	log.Info("Created new run entry", "id", run.Id)
+
 	return nil
 }
 
@@ -254,6 +255,5 @@ func (db *DB) AddNewIndexingEntry(obj *Indexooor) error {
 		return err
 	}
 
-	log.Info("Created new run entry")
 	return nil
 }
