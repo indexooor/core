@@ -38,6 +38,8 @@ type Indexooor struct {
 	Value        string `db:"value"`
 	VariableName string `db:"variable_name"`
 	Key          string `db:"key"`
+	DeepKey      string `db:deep_key`
+	StructVar    string `db:struct_var`
 }
 
 func SetupDB() (*DB, error) {
@@ -106,10 +108,10 @@ func (db *DB) prepareStatements() error {
 
 	db.runUpdate = runUpdateStatement
 
-	query = `INSERT INTO indexooor (slot, contract, value, variable_name, key) 
-					 VALUES ($1, $2, $3, $4, $5)
+	query = `INSERT INTO indexooor (slot, contract, value, variable_name, key, deep_key, struct_var)
+					 VALUES ($1, $2, $3, $4, $5, $6, $7)
 					 ON CONFLICT (slot, contract) DO UPDATE
-					 SET value = $3, variable_name = $4, key = $5;`
+					 SET value = $3, variable_name = $4, key = $5, deep_key = $6, struct_var = $7;`
 	indexooorInsertStatement, err := db.db.Prepare(query)
 	if err != nil {
 		log.Error("Error in creating insert statement for indexooor table", "err", err)
@@ -162,6 +164,8 @@ func (db *DB) createIndexingTable() error {
 		value TEXT,
 		variable_name TEXT,
 		key TEXT,
+		deep_key TEXT,
+		struct_var TEXT,
 		PRIMARY KEY (slot, contract)
 	);`
 
@@ -249,7 +253,21 @@ func (db *DB) AddNewIndexingEntry(obj *Indexooor) error {
 		key = nil
 	}
 
-	_, err := db.indexooorInsert.Exec(obj.Slot, obj.Contract, obj.Value, variableName, key)
+	var deepKey interface{}
+	if obj.DeepKey != "" {
+		deepKey = obj.DeepKey
+	} else {
+		deepKey = nil
+	}
+
+	var structVar interface{}
+	if obj.StructVar != "" {
+		structVar = obj.StructVar
+	} else {
+		structVar = nil
+	}
+
+	_, err := db.indexooorInsert.Exec(obj.Slot, obj.Contract, obj.Value, variableName, key, deepKey, structVar)
 	if err != nil {
 		log.Info("Error in creating new run", "err", err)
 		return err
