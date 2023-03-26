@@ -27,7 +27,7 @@ var (
 				Name:        "contract-addresses",
 				Usage:       "Contract address (comma seperated for multiple contracts)",
 				Value:       "",
-				DefaultText: "0x17fCb0e5562c9f7dBe2799B254e0948568973B36,0x17fCb0e5562c9f7dBe2799B254e0948568973B34",
+				DefaultText: "",
 				Required:    true,
 			},
 			&cli.Int64Flag{
