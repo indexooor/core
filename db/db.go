@@ -20,12 +20,12 @@ var (
 )
 
 type DBConfig struct {
-	host     string
-	port     uint64
-	user     string
-	dbname   string
-	password string
-	sslmode  string
+	Host     string
+	Port     uint64
+	User     string
+	Dbname   string
+	Password string
+	Sslmode  string
 }
 
 type DB struct {
@@ -41,6 +41,7 @@ type Run struct {
 	LastBlock  uint64         `db:"end_block"`
 	Contracts  pq.StringArray `db:"contracts"`
 }
+
 type Indexooor struct {
 	Slot         string `db:"slot"`
 	Contract     string `db:"contract"`
@@ -141,7 +142,7 @@ func connect(config *DBConfig) (*sql.DB, error) {
 		config = getDefaultConfig()
 	}
 
-	connStr := fmt.Sprintf("host=%s port=%d user=%s dbname=%s sslmode=%s", config.host, config.port, config.user, config.dbname, config.sslmode)
+	connStr := fmt.Sprintf("host=%s port=%d user=%s dbname=%s sslmode=%s", config.Host, config.Port, config.User, config.Dbname, config.Sslmode)
 	if password != "" {
 		connStr += fmt.Sprintf(" password=%s", password)
 	}
