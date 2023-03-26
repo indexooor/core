@@ -183,8 +183,8 @@ func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string, r
 
 			currentBlock++
 		} else {
-			log.Info("Indexed till tip of chain, waiting for 10s", "block", currentBlock)
-			time.Sleep(10 * time.Second)
+			log.Info("Indexed till tip of chain, waiting for 2s", "block", currentBlock)
+			time.Sleep(2 * time.Second)
 		}
 	}
 }
