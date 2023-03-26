@@ -23,9 +23,9 @@ var errInvalidStartBlock error = errors.New("invalid start block")
 
 // StartIndexing is the main loop which starts indexing the given contract addresses
 // from a start block using an RPC endpoint.
-func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string, runId uint64) error {
+func StartIndexing(_rpc string, startBlock uint64, contractAddresses []string, runId uint64, config *database.DBConfig) error {
 	// Setup the DB
-	db, err := database.SetupDB()
+	db, err := database.SetupDB(config)
 	if err != nil {
 		return err
 	}

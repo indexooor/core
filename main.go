@@ -86,5 +86,5 @@ func startIndexing(ctx *cli.Context) error {
 
 	log.Info("Starting to index", "contracts", contractAddresses, "start block", startBlock, "rpc", rpc, "run-id", runId)
 
-	return indexooor.StartIndexing(rpc, startBlock, contractAddresses, runId)
+	return indexooor.StartIndexing(rpc, startBlock, contractAddresses, runId, nil)
 }

@@ -19,6 +19,15 @@ var (
 	sslmode  = "disable"
 )
 
+type DBConfig struct {
+	host     string
+	port     uint64
+	user     string
+	dbname   string
+	password string
+	sslmode  string
+}
+
 type DB struct {
 	db              *sql.DB
 	runInsert       *sql.Stmt
@@ -42,8 +51,8 @@ type Indexooor struct {
 	StructVar    string `db:struct_var`
 }
 
-func SetupDB() (*DB, error) {
-	db, err := connect()
+func SetupDB(config *DBConfig) (*DB, error) {
+	db, err := connect(config)
 	if err != nil {
 		log.Error("Unable to connect to db", "err", err)
 		return nil, err
@@ -123,8 +132,16 @@ func (db *DB) prepareStatements() error {
 	return nil
 }
 
-func connect() (*sql.DB, error) {
-	connStr := fmt.Sprintf("host=%s port=%d user=%s dbname=%s sslmode=%s", host, port, user, dbname, sslmode)
+func getDefaultConfig() *DBConfig {
+	return &DBConfig{"localhost", 5432, "manav", "postgres", "", "disable"}
+}
+
+func connect(config *DBConfig) (*sql.DB, error) {
+	if config == nil {
+		config = getDefaultConfig()
+	}
+
+	connStr := fmt.Sprintf("host=%s port=%d user=%s dbname=%s sslmode=%s", config.host, config.port, config.user, config.dbname, config.sslmode)
 	if password != "" {
 		connStr += fmt.Sprintf(" password=%s", password)
 	}
